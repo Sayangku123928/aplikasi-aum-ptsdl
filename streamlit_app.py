@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 from io import BytesIO
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =========================================================
 # CONFIG
@@ -178,7 +179,9 @@ for n in (
 ):
     kunci_bidang[n] = "L"
 
-# Validasi
+# =========================================================
+# VALIDASI KUNCI
+# =========================================================
 if len(kunci_bidang) != 165:
     st.error(
         f"Kunci bidang tidak lengkap: "
@@ -236,6 +239,44 @@ def ubah_ke_skor(nilai):
         return 5
 
     return None
+
+
+# =========================================================
+# FUNGSI NAMA SHEET EXCEL
+# =========================================================
+def buat_nama_sheet(nama, nama_terpakai):
+
+    nama = str(nama).strip()
+
+    if not nama or nama.lower() == "nan":
+        nama = "Tanpa Nama"
+
+    # Karakter yang tidak boleh digunakan Excel
+    nama = re.sub(r'[\[\]\:\*\?\/\\]', '', nama)
+
+    # Maksimal nama sheet Excel = 31 karakter
+    nama = nama[:31].strip()
+
+    if not nama:
+        nama = "Siswa"
+
+    nama_awal = nama
+    nomor = 2
+
+    while nama in nama_terpakai:
+
+        tambahan = f" ({nomor})"
+
+        nama = (
+            nama_awal[:31 - len(tambahan)]
+            + tambahan
+        )
+
+        nomor += 1
+
+    nama_terpakai.add(nama)
+
+    return nama
 
 
 # =========================================================
@@ -771,22 +812,21 @@ with st.expander(
 # =========================================================
 # KUNCI BIDANG
 # =========================================================
+tabel_kunci = pd.DataFrame({
+
+    "No. Butir":
+        list(range(1, 166)),
+
+    "Bidang": [
+        kunci_bidang[i]
+        for i in range(1, 166)
+    ]
+
+})
+
 with st.expander(
     "🗝️ Lihat Kunci Bidang 1–165"
 ):
-
-    tabel_kunci = pd.DataFrame({
-
-        "No. Butir":
-            list(range(1, 166)),
-
-        "Bidang": [
-            kunci_bidang[i]
-            for i in range(1, 166)
-        ]
-
-    })
-
 
     st.dataframe(
         tabel_kunci,
@@ -798,54 +838,350 @@ with st.expander(
 
 # =========================================================
 # DOWNLOAD EXCEL
+# 1 SISWA = 1 SHEET
 # =========================================================
 st.markdown(
     '<div class="section-title">'
-    '📥 Download Hasil'
+    '📥 Download Hasil Excel'
     '</div>',
     unsafe_allow_html=True
 )
 
-output = BytesIO()
+st.info(
+    "📌 Setiap siswa akan dibuatkan 1 sheet sendiri. "
+    "Nama siswa digunakan sebagai nama sheet."
+)
 
+output = BytesIO()
 
 with pd.ExcelWriter(
     output,
     engine="openpyxl"
 ) as writer:
 
-    data_skor.to_excel(
-        writer,
-        sheet_name="Data Skor",
-        index=False
-    )
+    workbook = writer.book
 
-    hasil.to_excel(
-        writer,
-        sheet_name="Hasil",
-        index=False
-    )
+    nama_terpakai = set()
 
-    rata_bidang.reset_index().to_excel(
-        writer,
-        sheet_name="Ringkasan Bidang",
-        index=False
-    )
+    # =====================================================
+    # BUAT SHEET UNTUK SETIAP SISWA
+    # =====================================================
+    for index in range(len(df)):
 
-    tabel_kunci.to_excel(
-        writer,
-        sheet_name="Kunci Bidang",
-        index=False
-    )
+        nama_siswa = (
+            str(nama_responden.iloc[index])
+            .strip()
+        )
+
+        sheet_name = buat_nama_sheet(
+            nama_siswa,
+            nama_terpakai
+        )
+
+        worksheet = workbook.create_sheet(
+            title=sheet_name
+        )
+
+        # =================================================
+        # JUDUL
+        # =================================================
+        worksheet["A1"] = "HASIL AUM PTSdL"
+        worksheet["A1"].font = Font(
+            bold=True,
+            size=16
+        )
+
+        worksheet.merge_cells(
+            "A1:D1"
+        )
+
+        worksheet["A1"].alignment = Alignment(
+            horizontal="center"
+        )
+
+        # =================================================
+        # IDENTITAS SISWA
+        # =================================================
+        worksheet["A3"] = "Nama Siswa"
+        worksheet["B3"] = nama_siswa
+
+        worksheet["A4"] = "Jumlah Butir Terisi"
+        worksheet["B4"] = int(
+            data_skor.iloc[index].notna().sum()
+        )
+
+        worksheet["A5"] = "Total Skor"
+        worksheet["B5"] = float(
+            total.iloc[index]
+        )
+
+        worksheet["A6"] = "Rata-rata"
+        worksheet["B6"] = round(
+            float(rata.iloc[index]),
+            2
+        )
+
+        # =================================================
+        # REKAP BIDANG
+        # =================================================
+        worksheet["A8"] = "REKAP BIDANG"
+
+        worksheet["A9"] = "Bidang"
+        worksheet["B9"] = "Skor"
+        worksheet["C9"] = "Rata-rata"
+        worksheet["D9"] = "Jumlah Butir"
+
+        for kolom in ["A9", "B9", "C9", "D9"]:
+
+            worksheet[kolom].font = Font(
+                bold=True
+            )
+
+        baris = 10
+
+        for bidang in ["P", "T", "S", "D", "L"]:
+
+            skor = float(
+                hasil.iloc[index][bidang]
+            )
+
+            rata_bidang_siswa = round(
+                skor / jumlah_butir_bidang[bidang],
+                2
+            )
+
+            worksheet.cell(
+                row=baris,
+                column=1,
+                value=bidang
+            )
+
+            worksheet.cell(
+                row=baris,
+                column=2,
+                value=skor
+            )
+
+            worksheet.cell(
+                row=baris,
+                column=3,
+                value=rata_bidang_siswa
+            )
+
+            worksheet.cell(
+                row=baris,
+                column=4,
+                value=jumlah_butir_bidang[bidang]
+            )
+
+            baris += 1
+
+        # =================================================
+        # TABEL 165 BUTIR
+        # =================================================
+        baris_awal = 17
+
+        worksheet.cell(
+            row=baris_awal,
+            column=1,
+            value="DATA 165 BUTIR"
+        )
+
+        worksheet.cell(
+            row=baris_awal + 1,
+            column=1,
+            value="No. Butir"
+        )
+
+        worksheet.cell(
+            row=baris_awal + 1,
+            column=2,
+            value="Jawaban"
+        )
+
+        worksheet.cell(
+            row=baris_awal + 1,
+            column=3,
+            value="Skor"
+        )
+
+        worksheet.cell(
+            row=baris_awal + 1,
+            column=4,
+            value="Bidang"
+        )
+
+        for kolom in range(1, 5):
+
+            worksheet.cell(
+                row=baris_awal + 1,
+                column=kolom
+            ).font = Font(
+                bold=True
+            )
+
+        # =================================================
+        # ISI 165 BUTIR
+        # =================================================
+        for nomor in range(1, 166):
+
+            baris_data = (
+                baris_awal + 1 + nomor
+            )
+
+            kolom_asli = kolom_aum[
+                nomor - 1
+            ]
+
+            jawaban_asli = df.iloc[
+                index
+            ][kolom_asli]
+
+            skor = data_skor.iloc[
+                index,
+                nomor - 1
+            ]
+
+            bidang = kunci_bidang[
+                nomor
+            ]
+
+            worksheet.cell(
+                row=baris_data,
+                column=1,
+                value=nomor
+            )
+
+            if pd.isna(jawaban_asli):
+
+                worksheet.cell(
+                    row=baris_data,
+                    column=2,
+                    value=""
+                )
+
+            else:
+
+                worksheet.cell(
+                    row=baris_data,
+                    column=2,
+                    value=str(jawaban_asli)
+                )
+
+            if pd.isna(skor):
+
+                worksheet.cell(
+                    row=baris_data,
+                    column=3,
+                    value=""
+                )
+
+            else:
+
+                worksheet.cell(
+                    row=baris_data,
+                    column=3,
+                    value=int(skor)
+                )
+
+            worksheet.cell(
+                row=baris_data,
+                column=4,
+                value=bidang
+            )
+
+        # =================================================
+        # FORMAT SHEET
+        # =================================================
+
+        # Header utama
+        for cell in worksheet[1]:
+
+            cell.font = Font(
+                bold=True,
+                size=16
+            )
+
+        # Header tabel
+        for row in [
+            9,
+            baris_awal + 1
+        ]:
+
+            for cell in worksheet[row]:
+
+                cell.font = Font(
+                    bold=True
+                )
+
+        # Alignment
+        for row in worksheet.iter_rows():
+
+            for cell in row:
+
+                cell.alignment = Alignment(
+                    vertical="center"
+                )
+
+        # Lebar kolom
+        worksheet.column_dimensions["A"].width = 22
+        worksheet.column_dimensions["B"].width = 35
+        worksheet.column_dimensions["C"].width = 15
+        worksheet.column_dimensions["D"].width = 15
+
+        # Freeze tabel
+        worksheet.freeze_panes = (
+            f"A{baris_awal + 2}"
+        )
+
+        # Border
+        thin = Side(
+            style="thin",
+            color="D9C7D8"
+        )
+
+        border = Border(
+            left=thin,
+            right=thin,
+            top=thin,
+            bottom=thin
+        )
+
+        # Border rekap
+        for row in worksheet.iter_rows(
+            min_row=9,
+            max_row=14,
+            min_col=1,
+            max_col=4
+        ):
+
+            for cell in row:
+
+                cell.border = border
+
+        # Border data 165
+        for row in worksheet.iter_rows(
+            min_row=baris_awal + 1,
+            max_row=baris_awal + 166,
+            min_col=1,
+            max_col=4
+        ):
+
+            for cell in row:
+
+                cell.border = border
 
 
+# =========================================================
+# DOWNLOAD BUTTON
+# =========================================================
 st.download_button(
 
-    label="⬇️ Download Hasil Excel",
+    label="⬇️ Download Excel — 1 Siswa = 1 Sheet",
 
     data=output.getvalue(),
 
-    file_name="Hasil_AUM_PTSdL.xlsx",
+    file_name="Hasil_AUM_PTSdL_Per_Siswa.xlsx",
 
     mime=(
         "application/vnd.openxmlformats-officedocument."
@@ -856,6 +1192,9 @@ st.download_button(
 )
 
 
+# =========================================================
+# FOOTER
+# =========================================================
 st.markdown("---")
 
 st.caption(
