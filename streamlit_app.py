@@ -4,387 +4,159 @@ from io import BytesIO
 
 st.set_page_config(
     page_title="AUM PTSdL",
-    page_icon="📊",
+    page_icon="📋",
     layout="wide"
 )
 
-st.title("📊 Aplikasi Analisis AUM PTSdL")
-st.write("Pengolahan data AUM PTSdL dari hasil Google Form.")
+st.title("📋 Aplikasi Pengolahan AUM PTSdL")
+st.write("Upload file Excel hasil Google Form untuk mengolah jawaban AUM PTSdL.")
 
-# =========================================================
-# PEMBAGIAN 165 BUTIR AUM PTSdL
-# =========================================================
-
-GROUPS = {
-    "P – Prasyarat Penguasaan Materi": [
-        1, 2, 3, 4, 5,
-        31, 32, 33, 34, 35,
-        61, 62, 63, 64, 65,
-        91, 92, 93, 94, 95
-    ],
-
-    "T – Teknik / Keterampilan Belajar": [
-        6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-        36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
-        66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
-        96, 97, 98, 99, 100, 101, 102, 103, 104, 105,
-        106, 107, 108, 109, 110,
-        121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
-        131, 132, 133, 134, 135,
-        146, 147, 148, 149, 150, 151, 152, 153, 154, 155,
-        156, 157, 158, 159, 160
-    ],
-
-    "S – Sarana Belajar": [
-        16, 17, 18, 19, 20,
-        46, 47, 48, 49, 50,
-        76, 77, 78, 79, 80
-    ],
-
-    "D – Keadaan Diri Pribadi": [
-        21, 22, 23, 24, 25,
-        51, 52, 53, 54, 55,
-        81, 82, 83, 84, 85,
-        111, 112, 113, 114, 115,
-        136, 137, 138, 139, 140,
-        161, 162, 163, 164, 165
-    ],
-
-    "L – Lingkungan Sosial-Emosional": [
-        26, 27, 28, 29, 30,
-        56, 57, 58, 59, 60,
-        86, 87, 88, 89, 90,
-        116, 117, 118, 119, 120,
-        141, 142, 143, 144, 145
-    ]
-}
-
-
-# =========================================================
-# KONVERSI JAWABAN
-# =========================================================
-
-def ubah_jawaban(nilai):
-
-    if pd.isna(nilai):
-        return None
-
-    teks = str(nilai).strip().lower()
-
-    if "jarang" in teks:
-        return 1
-
-    if "kadang" in teks:
-        return 2
-
-    if "sering" in teks:
-        return 3
-
-    if "pada umumnya" in teks:
-        return 4
-
-    if "selalu" in teks:
-        return 5
-
-    # Kalau ternyata sudah berupa angka
-    try:
-        angka = float(teks)
-        if angka in [1, 2, 3, 4, 5]:
-            return int(angka)
-    except:
-        pass
-
-    return None
-
-
-# =========================================================
-# UPLOAD FILE
-# =========================================================
-
-st.subheader("📁 Upload Data AUM")
+st.subheader("1. Upload Data AUM PTSdL")
 
 file = st.file_uploader(
     "Pilih file Excel hasil Google Form",
-    type=["xlsx"]
+    type=["xlsx", "xls"]
 )
 
-if file is None:
-
-    st.info(
-        "Silakan upload file SMA (Jawaban) dari Google Form."
-    )
-
-else:
-
-    # =====================================================
-    # MEMBACA EXCEL
-    # =====================================================
+if file is not None:
 
     try:
+        df = pd.read_excel(file)
 
-        df = pd.read_excel(
-            file,
-            engine="openpyxl"
-        )
+        st.success("File berhasil dibaca!")
+
+        st.write("Jumlah responden:", len(df))
+        st.write("Jumlah kolom:", len(df.columns))
+
+        st.subheader("2. Data Asli")
+        st.dataframe(df.head())
+
+        # Pilihan jawaban AUM
+        pilihan = {
+            "jarang": 1,
+            "kadang-kadang": 2,
+            "kadang kadang": 2,
+            "sering": 3,
+            "pada umumnya": 4,
+            "pada umumnya ": 4,
+            "selalu": 5
+        }
+
+        # Mencari kolom jawaban AUM
+        kolom_aum = []
+
+        for kolom in df.columns:
+
+            nilai = df[kolom].astype(str).str.lower().str.strip()
+
+            jumlah = nilai.isin(pilihan.keys()).sum()
+
+            if jumlah > 0:
+                kolom_aum.append(kolom)
+
+        st.write("Kolom jawaban AUM yang terdeteksi:", len(kolom_aum))
+
+        if len(kolom_aum) == 0:
+
+            st.error(
+                "Jawaban AUM tidak terdeteksi. "
+                "Pastikan isi Excel menggunakan pilihan Jarang, "
+                "Kadang-kadang, Sering, Pada umumnya, atau Selalu."
+            )
+
+        else:
+
+            # Mengubah jawaban menjadi angka
+            data_skor = df[kolom_aum].copy()
+
+            for kolom in data_skor.columns:
+
+                data_skor[kolom] = (
+                    data_skor[kolom]
+                    .astype(str)
+                    .str.lower()
+                    .str.strip()
+                    .map(pilihan)
+                )
+
+            st.subheader("3. Hasil Konversi Jawaban")
+
+            st.write(
+                "Jarang = 1 | Kadang-kadang = 2 | Sering = 3 | "
+                "Pada umumnya = 4 | Selalu = 5"
+            )
+
+            st.dataframe(data_skor.head())
+
+            # Jumlah butir
+            jumlah_butir = len(kolom_aum)
+
+            st.subheader("4. Ringkasan")
+
+            st.write("Jumlah responden:", len(df))
+            st.write("Jumlah butir terdeteksi:", jumlah_butir)
+
+            # Total dan rata-rata setiap responden
+            total_skor = data_skor.sum(axis=1, skipna=True)
+            rata_rata = data_skor.mean(axis=1, skipna=True)
+
+            hasil = pd.DataFrame()
+
+            # Cari kolom identitas
+            kolom_nama = None
+
+            for kolom in df.columns:
+
+                nama = str(kolom).lower()
+
+                if "nama" in nama:
+                    kolom_nama = kolom
+                    break
+
+            if kolom_nama is not None:
+                hasil["Nama"] = df[kolom_nama]
+
+            hasil["Jumlah Butir Terisi"] = data_skor.notna().sum(axis=1)
+            hasil["Total Skor"] = total_skor
+            hasil["Rata-rata Skor"] = rata_rata.round(2)
+
+            st.subheader("5. Hasil Pengolahan Per Responden")
+
+            st.dataframe(hasil)
+
+            # Download hasil
+            output = BytesIO()
+
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+
+                df.to_excel(
+                    writer,
+                    sheet_name="Data Asli",
+                    index=False
+                )
+
+                data_skor.to_excel(
+                    writer,
+                    sheet_name="Data Skor",
+                    index=False
+                )
+
+                hasil.to_excel(
+                    writer,
+                    sheet_name="Hasil Per Responden",
+                    index=False
+                )
+
+            st.download_button(
+                label="⬇️ Download Hasil Pengolahan Excel",
+                data=output.getvalue(),
+                file_name="Hasil_AUM_PTSdL.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
     except Exception as e:
 
-        st.error("File Excel belum dapat dibaca.")
+        st.error("File belum dapat diproses.")
 
+        st.write("Pesan error:")
         st.code(str(e))
-
-        st.warning(
-            "Pastikan file yang diupload adalah file .xlsx "
-            "hasil Google Form."
-        )
-
-        st.stop()
-
-
-    st.success(
-        f"File berhasil dibaca! "
-        f"Ditemukan {len(df)} responden dan {len(df.columns)} kolom."
-    )
-
-
-    # =====================================================
-    # CEK FORMAT
-    # =====================================================
-
-    if len(df.columns) < 178:
-
-        st.error(
-            f"Jumlah kolom terdeteksi {len(df.columns)}. "
-            "File AUM yang digunakan seharusnya memiliki "
-            "13 kolom identitas + 165 butir AUM = 178 kolom."
-        )
-
-        st.stop()
-
-
-    # =====================================================
-    # IDENTITAS
-    # =====================================================
-
-    identitas = df.iloc[:, :13].copy()
-
-    # 165 pertanyaan dimulai dari kolom ke-14
-    pertanyaan = df.iloc[:, 13:178].copy()
-
-
-    # =====================================================
-    # KONVERSI JAWABAN KE ANGKA
-    # =====================================================
-
-    skor = pertanyaan.map(ubah_jawaban)
-
-
-    # =====================================================
-    # CEK JUMLAH BUTIR
-    # =====================================================
-
-    if skor.shape[1] != 165:
-
-        st.error(
-            f"Jumlah butir yang terbaca adalah "
-            f"{skor.shape[1]}, bukan 165."
-        )
-
-        st.stop()
-
-
-    st.success(
-        "165 butir AUM berhasil ditemukan dan diproses."
-    )
-
-
-    # =====================================================
-    # PREVIEW DATA
-    # =====================================================
-
-    st.subheader("👀 Preview Data")
-
-    preview = pd.concat(
-        [identitas, skor],
-        axis=1
-    )
-
-    st.dataframe(
-        preview.head(10),
-        use_container_width=True
-    )
-
-
-    # =====================================================
-    # HASIL PER KELOMPOK
-    # =====================================================
-
-    hasil = identitas.copy()
-
-    for nama_kelompok, nomor_butir in GROUPS.items():
-
-        kolom = [
-            pertanyaan.iloc[:, nomor - 1].name
-            for nomor in nomor_butir
-        ]
-
-        data_kelompok = skor[kolom]
-
-        hasil[nama_kelompok + " - Total Skor"] = (
-            data_kelompok.sum(axis=1)
-        )
-
-        hasil[nama_kelompok + " - Rata-rata"] = (
-            data_kelompok.mean(axis=1).round(2)
-        )
-
-        hasil[nama_kelompok + " - Butir ≥ 3"] = (
-            (data_kelompok >= 3).sum(axis=1)
-        )
-
-
-    # =====================================================
-    # HASIL
-    # =====================================================
-
-    st.subheader("📊 Hasil Pengolahan AUM")
-
-    st.dataframe(
-        hasil,
-        use_container_width=True,
-        height=450
-    )
-
-
-    # =====================================================
-    # RINGKASAN P / T / S / D / L
-    # =====================================================
-
-    st.subheader("📈 Ringkasan Bidang")
-
-    ringkasan = []
-
-    for nama_kelompok, nomor_butir in GROUPS.items():
-
-        kolom = [
-            pertanyaan.iloc[:, nomor - 1].name
-            for nomor in nomor_butir
-        ]
-
-        data_kelompok = skor[kolom]
-
-        ringkasan.append({
-            "Bidang": nama_kelompok,
-            "Jumlah Butir": len(nomor_butir),
-            "Rata-rata Skor": round(
-                data_kelompok.mean().mean(), 2
-            ),
-            "Rata-rata Butir ≥ 3": round(
-                (data_kelompok >= 3).sum(axis=1).mean(), 2
-            )
-        })
-
-    ringkasan_df = pd.DataFrame(ringkasan)
-
-    st.dataframe(
-        ringkasan_df,
-        use_container_width=True
-    )
-
-
-    # =====================================================
-    # PILIH SISWA
-    # =====================================================
-
-    st.subheader("👤 Hasil Per Siswa")
-
-    nama_kolom = "NAMA"
-
-    if nama_kolom in df.columns:
-
-        daftar_nama = (
-            df[nama_kolom]
-            .fillna("Tanpa Nama")
-            .astype(str)
-            .tolist()
-        )
-
-        nama_pilihan = st.selectbox(
-            "Pilih nama siswa:",
-            daftar_nama
-        )
-
-        posisi = daftar_nama.index(
-            nama_pilihan
-        )
-
-        detail = []
-
-        for nama_kelompok, nomor_butir in GROUPS.items():
-
-            kolom = [
-                pertanyaan.iloc[:, nomor - 1].name
-                for nomor in nomor_butir
-            ]
-
-            data_siswa = skor.iloc[posisi][kolom]
-
-            detail.append({
-                "Bidang": nama_kelompok,
-                "Jumlah Butir": len(nomor_butir),
-                "Total Skor": int(
-                    data_siswa.sum()
-                ),
-                "Rata-rata": round(
-                    data_siswa.mean(), 2
-                ),
-                "Butir Skor ≥ 3": int(
-                    (data_siswa >= 3).sum()
-                )
-            })
-
-        detail_df = pd.DataFrame(detail)
-
-        st.dataframe(
-            detail_df,
-            use_container_width=True
-        )
-
-
-    # =====================================================
-    # DOWNLOAD EXCEL
-    # =====================================================
-
-    st.subheader("⬇️ Download Hasil")
-
-    output = BytesIO()
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl"
-    ) as writer:
-
-        hasil.to_excel(
-            writer,
-            index=False,
-            sheet_name="Hasil Per Siswa"
-        )
-
-        ringkasan_df.to_excel(
-            writer,
-            index=False,
-            sheet_name="Ringkasan PTSdL"
-        )
-
-        preview.to_excel(
-            writer,
-            index=False,
-            sheet_name="Data Skor"
-        )
-
-    st.download_button(
-        label="📥 Download Hasil Pengolahan AUM",
-        data=output.getvalue(),
-        file_name="Hasil_Pengolahan_AUM_PTSdL.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
